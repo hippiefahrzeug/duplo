@@ -29,7 +29,7 @@ intro.edt {
                     }
                     tr {
                         td {
-                          selfolder = textField(text:"/home/alvi")
+                          selfolder = textField(text:"/home/alvi/projects")
                         }
                     }
                     tr {
@@ -94,8 +94,17 @@ swingBuilder.edt {
            panel(constraints: BorderLayout.CENTER,
                    border: compoundBorder([emptyBorder(10), titledBorder('le duplicates:')])) {
                tableLayout {
+                   tr {
+                        td {
+                            vbox {
+                                 button text: "delete ALL selected duplicates", actionPerformed: {
+                                      deleteFiles(deleteMap)
+                                 }
+                            }
+                          }
+                   }
                  sizes.eachWithIndex { elem, idx -> 
-                   if (idx > 10) { return; }
+                   if (idx > 1000) { return; }
                    def key = elem.key
                    def dups = dupes[key]
                    def img = origs[key]
@@ -193,6 +202,7 @@ def finddupes() {
     allFiles(basedir, 0, all);
     info1.text = "files found: " + all.size()
 
+    def sizeCheck = [:]
     def map = [:]
     def sizemap = [:]
     def sizes = [:]
@@ -200,21 +210,35 @@ def finddupes() {
     int c = 0;
     int wasted = 0;
     all.each {
-        if (stop) {
-            return
-        }
-        if (c++ % 1031) {
+        if (c++ % 101 == 0) {
             info2.text = "processing: " + "${all.size()-c} to go..."
             def megs = (int)(wasted/(1024*1024))
             println "${all.size()-c} to go... ($it)"
         }
-/* this is very slow :(
-        MessageDigest digest = MessageDigest.getInstance("MD5")
-        digest.update(it.text.bytes)
-        BigInteger big = new BigInteger(1,digest.digest())
-        String md5 = big.toString(16).padLeft(32,"0")
-*/
-        String md5 = ["openssl", "md5", "$it"].execute().text.replaceFirst(/.*= /, "").replace("\n", "")
+
+        if (stop) {
+            return
+        }
+        // first check if we ever got a file of this size
+        def md5
+        if (sizeCheck.containsKey(it.length())) {
+            // has the orig file of this soze already been calculated?
+            if (sizeCheck[it.length()]) {
+                // yes, we did, there's a chance for a duplicate, need
+                // to calculate deferred md5sum (if not already calculated)
+                def f = sizeCheck[it.length()]
+                md5 = md5sum(f);
+                map[md5] = f
+                sizeCheck[it.length()] = null
+            }
+        }
+        else {
+            // nope, no chance for a duplicate!
+            sizeCheck[it.length()] = it
+            return
+        }
+
+        md5 = md5sum(it)
         if (map.containsKey(md5)) {
             sizes[md5] = it.length()
             // println "$it exists: ${map[md5]}"
@@ -244,6 +268,17 @@ def finddupes() {
     sizes.each{println it}
 
     return [map, result, sizes];
+}
+
+def md5sum(File f) {
+/* this is very slow :(
+    MessageDigest digest = MessageDigest.getInstance("MD5")
+    digest.update(f.text.bytes)
+    BigInteger big = new BigInteger(1,digest.digest())
+    String md5 = big.toString(16).padLeft(32,"0")
+*/
+    String md5 = ["openssl", "md5", "$f"].execute().text.replaceFirst(/.*= /, "").replace("\n", "")
+    return md5;
 }
 
 def allFiles(File cur, int depth, def result) {
