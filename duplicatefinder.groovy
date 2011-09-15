@@ -83,6 +83,8 @@ def (origs, dupes, sizes) = finddupes()
 
 def deleteMap = [:]
 def swingBuilder = new SwingBuilder()
+def imageLabelsToLoad = []
+def imagesToLoad = []
 swingBuilder.edt {
     lookAndFeel 'nimbus'  // Simple change in look and feel.
     frame(title: 'dupes', size: [800, 600],
@@ -97,11 +99,11 @@ swingBuilder.edt {
                    tr {
                         td {
                             vbox {
-                                 button text: "delete ALL selected duplicates", actionPerformed: {
+                                 button text: "delete ALL", actionPerformed: {
                                       deleteFiles(deleteMap)
                                  }
                             }
-                          }
+                        }
                    }
                  sizes.eachWithIndex { elem, idx -> 
                    if (idx > 1000) { return; }
@@ -112,10 +114,20 @@ swingBuilder.edt {
                    tr {
                         td {
                           if (isImage(img)) {
+                           if (idx < 0) { // disabld for now
                             label icon:new ImageIcon(getScaledImage("$img", 64, 64)), mouseClicked: {
                                 def p = ["display", "$img"].execute()
                                 p.waitFor()
                             }
+                           }
+                           else {
+                            def l = label(icon:new ImageIcon(), mouseClicked: {
+                                def p = ["display", "$img"].execute()
+                                p.waitFor()
+                            })
+                            imageLabelsToLoad.add(l)
+                            imagesToLoad.add(img)
+                           }
                           }
                           else {
                               label text:"no preview"
@@ -175,10 +187,18 @@ swingBuilder.edt {
     }
 }
 
+imageLabelsToLoad.eachWithIndex {ele, idx ->
+    println "loading: ${imagesToLoad[idx]}"
+    def img = getScaledImage("${imagesToLoad[idx]}", 64, 64)
+    ele.icon.image = img
+    ele.text = "."
+}
+
 def deleteFiles(def map) {
     map.each {
         if (it.value) {
             println "delete $it.key"
+            it.key.delete()
         }
     }
 }
@@ -263,6 +283,7 @@ def finddupes() {
         }
         // print "openssl md5 $it".execute().text
     }
+    info2.text = "processing: " + "${all.size()-c} to go..."
 
     sizes = sizes.sort {a, b -> b.value <=> a.value}
     sizes.each{println it}
