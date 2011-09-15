@@ -7,6 +7,10 @@ import java.awt.image.BufferedImage
 import java.security.MessageDigest
 import javax.swing.*
 
+env = System.getenv()
+sizemap = [:]
+possibledupes = []
+
 def wait = true
 stop = false
 
@@ -16,7 +20,7 @@ images = true
 def intro = new SwingBuilder()
 
 intro.edt {
-    lookAndFeel 'nimbus'  // Simple change in look and feel.
+    lookAndFeel 'system'  // Simple change in look and feel.
     frame(title: 'dupes', size: [300, 250],
             show: true, locationRelativeTo: null,
             defaultCloseOperation: EXIT_ON_CLOSE) {
@@ -29,13 +33,15 @@ intro.edt {
                     }
                     tr {
                         td {
-                          selfolder = textField(text:"/home/alvi/projects")
+                          selfolder = textField(text:"${env["HOME"]}")
+                          selfolder.preferredSize = new Dimension(250, 30)
                         }
                     }
                     tr {
                         td {
                           minSize = textField(text:minSize)
-                        }
+                          minSize.preferredSize = new Dimension(250, 30)
+                       }
                     }
                     tr {
                         td {
@@ -86,7 +92,7 @@ def swingBuilder = new SwingBuilder()
 def imageLabelsToLoad = []
 def imagesToLoad = []
 swingBuilder.edt {
-    lookAndFeel 'nimbus'  // Simple change in look and feel.
+    lookAndFeel 'system'  // Simple change in look and feel.
     frame(title: 'dupes', size: [800, 600],
             show: true, locationRelativeTo: null,
             defaultCloseOperation: EXIT_ON_CLOSE) {
@@ -94,7 +100,7 @@ swingBuilder.edt {
 
         scrollPane() {
            panel(constraints: BorderLayout.CENTER,
-                   border: compoundBorder([emptyBorder(10), titledBorder('le duplicates:')])) {
+                   border: compoundBorder([emptyBorder(10)])) {
                tableLayout {
                    tr {
                         td {
@@ -220,41 +226,22 @@ def finddupes() {
     def all = []
     info1.text = "searching for files..."
     allFiles(basedir, 0, all);
-    info1.text = "files found: " + all.size()
+    info1.text = "files found: ${all.size()} (${possibledupes.size()} need check)"
 
     def sizeCheck = [:]
     def map = [:]
-    def sizemap = [:]
     def sizes = [:]
     int n = 0;
     int c = 0;
     int wasted = 0;
-    all.each {
+    possibledupes.each {
         if (c++ % 101 == 0) {
-            info2.text = "processing: " + "${all.size()-c} to go..."
+            info2.text = "processing: " + "${possibledupes.size()-c} to go..."
             def megs = (int)(wasted/(1024*1024))
-            println "${all.size()-c} to go... ($it)"
+            println "${possibledupes.size()-c} to go... ($it)"
         }
 
         if (stop) {
-            return
-        }
-        // first check if we ever got a file of this size
-        def md5
-        if (sizeCheck.containsKey(it.length())) {
-            // has the orig file of this soze already been calculated?
-            if (sizeCheck[it.length()]) {
-                // yes, we did, there's a chance for a duplicate, need
-                // to calculate deferred md5sum (if not already calculated)
-                def f = sizeCheck[it.length()]
-                md5 = md5sum(f);
-                map[md5] = f
-                sizeCheck[it.length()] = null
-            }
-        }
-        else {
-            // nope, no chance for a duplicate!
-            sizeCheck[it.length()] = it
             return
         }
 
@@ -283,7 +270,7 @@ def finddupes() {
         }
         // print "openssl md5 $it".execute().text
     }
-    info2.text = "processing: " + "${all.size()-c} to go..."
+    info2.text = "processing: " + "${possibledupes.size()-c} to go..."
 
     sizes = sizes.sort {a, b -> b.value <=> a.value}
     sizes.each{println it}
@@ -312,9 +299,19 @@ def allFiles(File cur, int depth, def result) {
         }
         if (it.isFile() && isSelected(it)) {
             if (it.length() >= minSize.text.toInteger()) { // only look at bigger pics
+                if (sizemap.containsKey(it.length())) {
+                    if (sizemap[it.length()]) {
+                        possibledupes.add(sizemap[it.length()])
+                    }
+                    possibledupes.add(it)
+                    sizemap[it.length()] = null
+                }
+                else {
+                    sizemap[it.length()] = it
+                }
                 result.add(it);
                 if ((1+result.size()) % 33 == 0) {
-                    info1.text = "files found: " + result.size()
+                    info1.text = "files found: ${result.size()} (${possibledupes.size()} need check)"
                     println "${result.size()} files (... $cur)"
                 }
             }
