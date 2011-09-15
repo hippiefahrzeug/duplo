@@ -1,3 +1,4 @@
+package com.sb
 import groovy.swing.SwingBuilder  
 import groovy.beans.Bindable  
 import static javax.swing.JFrame.EXIT_ON_CLOSE  
