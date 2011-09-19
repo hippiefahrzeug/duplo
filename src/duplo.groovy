@@ -1,3 +1,9 @@
+// NOTE: I made this program in a hurry to learn groovy, simple
+// gui programming with groovy, and try some concurrency
+//
+// This is not beautiful! (but useful enough, since most
+// duplicate finder GUIs suck IMHO)
+//
 package com.sb
 import groovy.swing.SwingBuilder  
 import groovy.beans.Bindable  
@@ -7,10 +13,36 @@ import javax.swing.ImageIcon
 import java.awt.image.BufferedImage
 import java.security.MessageDigest
 import javax.swing.*
+import java.util.concurrent.*
+import java.util.concurrent.atomic.AtomicInteger
 
 env = System.getenv()
 sizemap = [:]
 possibledupes = []
+counter = new AtomicInteger()
+tcounter = new AtomicInteger()
+
+// background hashing... {
+md5sumMap = [:]
+THREADS = 20
+keys = 0
+pool = Executors.newFixedThreadPool(THREADS)
+defer = { c -> pool.submit(c as Callable) }
+synchronized stmap(def fi, def md) {
+    md5sumMap[fi] = md
+}
+synchronized keysAcc(def val) {
+    keys += val
+// println keys
+}
+hash = { fi ->
+    counter.incrementAndGet()
+    def md = md5sum(fi);
+    stmap(fi, md)
+    counter.decrementAndGet()
+    tcounter.incrementAndGet()
+}
+// } background hashing...
 
 def wait = true
 stop = false
@@ -227,7 +259,8 @@ def finddupes() {
     def all = []
     info1.text = "searching for files..."
     allFiles(basedir, 0, all);
-    info1.text = "files found: ${all.size()} (${possibledupes.size()} need check)"
+    def nc = possibledupes.size() - tcounter.get();
+    info1.text = "files found: ${all.size()} (${nc} need check)"
 
     def sizeCheck = [:]
     def map = [:]
@@ -235,6 +268,16 @@ def finddupes() {
     int n = 0;
     int c = 0;
     int wasted = 0;
+
+    while (counter.get() > 0) {
+        sleep(500)
+        nc = possibledupes.size() - tcounter.get();
+        info2.text = "preparing... $nc";
+    }
+    nc = possibledupes.size() - tcounter.get();
+    info2.text = "preparing... $nc";
+    pool.shutdown()
+
     possibledupes.each {
         if (c++ % 101 == 0) {
             info2.text = "processing: " + "${possibledupes.size()-c} to go..."
@@ -246,7 +289,14 @@ def finddupes() {
             return
         }
 
-        md5 = md5sum(it)
+        if (md5sumMap.containsKey(it)) {
+//println "# HASD!!!! :) ${it}"
+            md5 = md5sumMap[it]
+        }
+        else {
+println "# NOT!!!! :( ${it}"
+            md5 = md5sum(it)
+        }
         if (map.containsKey(md5)) {
             sizes[md5] = it.length()
             // println "$it exists: ${map[md5]}"
@@ -301,10 +351,14 @@ def allFiles(File cur, int depth, def result) {
         if (it.isFile() && isSelected(it)) {
             if (it.length() >= minSize.text.toInteger()) { // only look at bigger pics
                 if (sizemap.containsKey(it.length())) {
-                    if (sizemap[it.length()]) {
-                        possibledupes.add(sizemap[it.length()])
+                    def file = it
+                    if (sizemap[file.length()]) {
+                        def o = sizemap[file.length()]
+                        possibledupes.add(o)
+                        defer{ hash(o) }
                     }
-                    possibledupes.add(it)
+                    possibledupes.add(file)
+                    defer{ hash(file) }
                     sizemap[it.length()] = null
                 }
                 else {
@@ -312,8 +366,10 @@ def allFiles(File cur, int depth, def result) {
                 }
                 result.add(it);
                 if ((1+result.size()) % 33 == 0) {
-                    info1.text = "files found: ${result.size()} (${possibledupes.size()} need check)"
-                    println "${result.size()} files (... $cur)"
+                    def nc = possibledupes.size() - tcounter.get()
+                    info1.text = "files found: ${result.size()} (${nc} need check)"
+                    // info1.text = "files found: ${result.size()} (${possibledupes.size()} need check)"
+                    // println "${result.size()} files (... $cur)"
                 }
             }
         }
